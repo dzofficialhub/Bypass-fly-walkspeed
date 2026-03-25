@@ -1,0 +1,58 @@
+--Bypass fly walkspeed teleport 
+
+local Services = setmetatable({}, {__index = function(t, k) return game:GetService(k) end})
+local Player = Services.Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local Humanoid = Character:WaitForChild("Humanoid")
+
+-- 1. Cache de constantes para evitar picos de CPU
+local GLOBAL_WS = 16
+local GLOBAL_JP = 50
+local IS_FLYING = false
+
+-- 2. Hook de Metamétodos (__index y __newindex)
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    -- Si el juego (no nosotros) intenta leer la velocidad, le damos el valor base
+    if not checkcaller() and self:IsA("Humanoid") then
+        if key == "WalkSpeed" then return GLOBAL_WS end
+        if key == "JumpPower" then return GLOBAL_JP end
+    end
+    return oldIndex(self, key)
+end))
+
+local oldNewIndex
+oldNewIndex = hookmetamethod(game, "__newindex", newcclosure(function(self, key, value)
+    -- Si el juego intenta resetear nuestra velocidad a 16, bloqueamos el cambio
+    if not checkcaller() and self:IsA("Humanoid") then
+        if key == "WalkSpeed" or key == "JumpPower" then
+            return -- Ignora el intento del juego de cambiar tu velocidad
+        end
+    end
+    return oldNewIndex(self, key, value)
+end))
+
+-- 3. Bypass de Fly (Velocity & State)
+-- Evita que el juego detecte que estás en estado "Falling" o "Flying" por mucho tiempo
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if not checkcaller() and method == "FireServer" and self.Name:lower():find("check") then
+        return nil -- Bloquea reportes de posición sospechosa
+    end
+    return oldNamecall(self, ...)
+end))
+
+-- Función segura para activar el Fly sin morir
+local function toggleFly(state)
+    IS_FLYING = state
+    if state then
+        Services.RunService.Stepped:Connect(function()
+            if IS_FLYING and Character:FindFirstChild("HumanoidRootPart") then
+                Character.HumanoidRootPart.Velocity = Vector3.new(0, 0.1, 0) -- Mantiene el balance
+            end
+        end)
+    end
+end
+
+print("Bypass de Movimiento cargado.")
